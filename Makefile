@@ -1,7 +1,7 @@
-CC=g++
+CC=clang++
 CFLAGS=-std=c++11
 
-all: rna rnamp
+all: rna rnamp rnal2r
 
 rna: rna.cpp
 	mkdir -p bin
@@ -10,6 +10,10 @@ rna: rna.cpp
 rnamp: rna_mp.cpp
 	mkdir -p bin
 	$(CC) $(CFLAGS) -fopenmp rna_mp.cpp -o ./bin/rna_mp
+
+rnal2r: rna_l2r.cpp
+	mkdir -p bin
+	$(CC) $(CFLAGS) -fopenmp rna_l2r.cpp -o ./bin/rna_l2r
 
 clean:
 	rm -f ./bin/rna ./bin/rna_mp
