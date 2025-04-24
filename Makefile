@@ -1,5 +1,5 @@
 CC=g++
-CFLAGS=-std=c++11
+CFLAGS=-std=c++14
 
 all: rna rnamp rnal2r
 
@@ -16,4 +16,4 @@ rnal2r: rna_l2r.cpp
 	$(CC) $(CFLAGS) -fopenmp rna_l2r.cpp -o ./bin/rna_l2r
 
 clean:
-	rm -f ./bin/rna ./bin/rna_mp
+	rm -f ./bin/rna ./bin/rna_mp ./bin/rna_l2r
