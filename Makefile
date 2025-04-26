@@ -1,5 +1,5 @@
 CC=g++
-CFLAGS=-std=c++14
+CFLAGS=-std=c++11
 
 all: rna rnamp rnal2r
 

@@ -747,28 +747,28 @@ long long total11(std::string s, bool verbose) {
         // real    1m8.373s
         // user    9m3.826s
         // sys     0m0.560s
-        // #pragma omp parallel for schedule(dynamic)
-        // for (int k = 1; k <= j; ++k) {
-        //     long long total = 0;
-        //     for (int t = 0; t < num_threads; ++t) {
-        //         total += thread_updates[t][k];
-        //     }
-        //     dp[k][j] += total;
-        // }
-
-        // real    1m9.349s
-        // user    9m4.388s
-        // sys     0m8.118s
         #pragma omp parallel for schedule(dynamic)
         for (int k = 1; k <= j; ++k) {
             long long total = 0;
-
-            #pragma omp parallel for reduction(+:total)
             for (int t = 0; t < num_threads; ++t) {
                 total += thread_updates[t][k];
             }
             dp[k][j] += total;
         }
+
+        // real    1m9.349s
+        // user    9m4.388s
+        // sys     0m8.118s
+        // #pragma omp parallel for schedule(dynamic)
+        // for (int k = 1; k <= j; ++k) {
+        //     long long total = 0;
+
+        //     #pragma omp parallel for reduction(+:total)
+        //     for (int t = 0; t < num_threads; ++t) {
+        //         total += thread_updates[t][k];
+        //     }
+        //     dp[k][j] += total;
+        // }
 
         if (verbose) {
             std::cout << "j=" << j << std::endl;
@@ -948,6 +948,23 @@ long long total13(std::string s, bool verbose) {
     return dp[1][n];
 }
 
+int upperbound(const std::vector<int>& arr, int k) {
+    int left = 0, right = arr.size();
+    while (left < right) {
+        int mid = (left + right) / 2;
+        if (arr[mid] <= k)
+            left = mid + 1;
+        else
+            right = mid;
+    }
+    return left; // first position where arr[pos] > k
+}
+
+
+inline int idx(int i, int j, int n) {
+    return i * (n + 1) + j;
+}
+
 long long total14(std::string s, bool verbose) {
     int n = s.size();
     s = " " + s;             // 1-based
@@ -989,16 +1006,52 @@ long long total14(std::string s, bool verbose) {
         // user    6m3.706s
         // sys     0m0.121s
         // use binary search for finding all k < valid_i
+        // #pragma omp parallel for schedule(dynamic)
+        // for(int k=1; k<=j; ++k) {
+        //     long long sum = 0;
+        //     auto it = upper_bound(valid_i.begin(), valid_i.end(), k);
+
+        //     //#pragma omp parallel for reduction(+:sum)   // dosent work with iterators
+        //     for (; it != valid_i.end(); ++it) {
+        //         int i = *it;
+        //         sum += dp[k][i-2] * dp[i][j-1];
+        //     }
+        //     dp[k][j] += sum;
+        // }
+
+        // ON MOZART
+        // real    0m16.863s
+        // user    8m43.512s
+        // sys     0m9.769s
+        // #pragma omp parallel for schedule(dynamic)
+        // for (int k = 1; k <= j; ++k) {
+        //     long long sum = 0;
+
+        //     #pragma omp parallel for reduction(+:sum)
+        //     for (int idx = 0; idx < valid_i.size(); ++idx) {
+        //         int i = valid_i[idx];
+        //         if (k < i)
+        //             sum += dp[k][i-2] * dp[i][j-1];
+        //     }
+
+        //     dp[k][j] += sum;
+        // }
+
+        // ON MOZART
+        // real    0m14.563s
+        // user    7m30.092s
+        // sys     0m9.843s
         #pragma omp parallel for schedule(dynamic)
-        for(int k=1; k<=j; ++k) {
+        for (int k = 1; k <= j; ++k) {
             long long sum = 0;
-            auto it = upper_bound(valid_i.begin(), valid_i.end(), k);
+            int start_idx = upperbound(valid_i, k);  //binary search for removing if condition in next loop
 
             #pragma omp parallel for reduction(+:sum)
-            for (; it != valid_i.end(); ++it) {
-                int i = *it;
+            for (int idx = start_idx; idx < valid_i.size(); ++idx) {
+                int i = valid_i[idx];
                 sum += dp[k][i-2] * dp[i][j-1];
             }
+
             dp[k][j] += sum;
         }
 
@@ -1012,10 +1065,68 @@ long long total14(std::string s, bool verbose) {
     return dp[1][n];
 }
 
+
+inline bool is_allowed(char a, char b) {
+    return (a=='A'&&b=='U') || (a=='U'&&b=='A') ||
+           (a=='C'&&b=='G') || (a=='G'&&b=='C') ||
+           (a=='G'&&b=='U') || (a=='U'&&b=='G');
+}
+
+long long total15(std::string s, bool verbose) {
+    int n = s.size();
+    s = " " + s;             // 1-based
+
+    std::vector<long long> dp((n+1)*(n+1), 0);
+
+    for(int j=1; j<=n; ++j)
+        dp[idx(j, j-1, n)] = 1;
+
+    std::vector<int> valid_i;
+    valid_i.reserve(n);
+    for(int j=1; j<=n; ++j) {
+
+        valid_i.clear();
+
+        // case where j is unpaired and build list of valid i's
+        #pragma omp parallel for schedule(static)
+        for (int i = 1; i <= j; ++i) {
+            dp[idx(i, j, n)] = dp[idx(i, j-1, n)];
+        }
+
+        // build valid_i
+        for (int i = 1; i <= j; ++i) {
+            if (is_allowed(s[i-1], s[j]))
+                valid_i.push_back(i);
+        }
+
+        #pragma omp parallel for schedule(dynamic)
+        for (int k = 1; k <= j; ++k) {
+            long long sum = 0;
+            int start_itr = upperbound(valid_i, k);  //binary search for removing if condition in next loop
+
+            // #pragma omp parallel for reduction(+:sum)  // improves the real time a little bit but worsens sys time
+            for (int itr = start_itr; itr < valid_i.size(); ++itr) {
+                int i = valid_i[itr];
+                sum += dp[idx(k, i-2, n)] * dp[idx(i, j-1, n)];
+            }
+
+            dp[idx(k, j, n)] += sum;
+        }
+
+        if (verbose) {
+            std::cout << "j="<<j<<": ";
+            for(int i=1;i<=j;i++) std::cout<<dp[idx(i, j, n)]<<" ";
+            std::cout<<"\n";
+        }
+    }
+
+    return dp[idx(1, n, n)];
+}
+
 int main() {
     
     // omp_set_nested(1);
-    omp_set_num_threads(8);
+    omp_set_num_threads(32);
 
     std::string test0 = "ACAGU";
     // Test cases: 16S rRNA    
@@ -1038,10 +1149,7 @@ int main() {
 
     /// CORRECTNESS CHECK
     // std::cout << "total(\"" << test3 << "\") = " << total1(test3, false) << "\n";
-    // std::cout << "total(\"" << test3 << "\") = " << total14(test3, false) << "\n";
-
-    std::cout << "total(\"" << test3 << "\") = " << total1(test3, false) << "\n";
-    std::cout << "total(\"" << test3 << "\") = " << total14(test3, false) << "\n";
+    // std::cout << "total(\"" << test3 << "\") = " << total15(test3, false) << "\n";
 
     // std::cout << "total(\"" << test6 << "\") = " << total0(test6, false) << "\n";
     // std::cout << "total(\"" << test6 << "\") = " << total1(test6, false) << "\n";
@@ -1053,7 +1161,13 @@ int main() {
     // std::cout << "total(\"" << test6 << "\") = " << total7(test6, false) << "\n";
     // std::cout << "total(\"" << test6 << "\") = " << total14(test6, false) << "\n";
 
-    std::cout << "total(\"" << test6 << "\") = " << total14(test6, false) << "\n";
+    // std::cout << "total(\"" << test6 << "\") = " << total0(test6, false) << "\n";
+    // std::cout << "total(\"" << test6 << "\") = " << total1(test6, false) << "\n";
+    // std::cout << "total(\"" << test6 << "\") = " << total11(test6, false) << "\n";
+    // std::cout << "total(\"" << test6 << "\") = " << total12(test6, false) << "\n";
+    // std::cout << "total(\"" << test6 << "\") = " << total14(test6, false) << "\n";
+    std::cout << "total(\"" << test6 << "\") = " << total15(test6, false) << "\n";
+
 
     return 0;
 }
